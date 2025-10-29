@@ -8,8 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/example/ai-webscraper-go/ollama"
-	"github.com/example/ai-webscraper-go/scraper"
+	"github.com/Brian-Soh/LLM-Webscraper-Assistant/backend-go/ollama"
+	"github.com/Brian-Soh/LLM-Webscraper-Assistant/backend-go/scraper"
 )
 
 // --- SCRAPE HANDLER ---

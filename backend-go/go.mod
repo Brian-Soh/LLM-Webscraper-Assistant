@@ -1,4 +1,4 @@
-module github.com/example/ai-webscraper-go
+module github.com/Brian-Soh/LLM-Webscraper-Assistant/backend-go
 
 go 1.23
 
