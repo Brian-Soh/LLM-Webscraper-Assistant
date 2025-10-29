@@ -1,0 +1,33 @@
+<div class="card">
+  <label>Website URL</label>
+  <input [(ngModel)]="url" placeholder="https://example.com" />
+  <button (click)="onScrape()" [disabled]="loading || !url">Scrape Site</button>
+</div>
+
+<!-- Show cleaned content after /api/scrape -->
+<div class="card" *ngIf="cleaned">
+  <label>Scraped (cleaned) content</label>
+  <textarea [ngModel]="cleaned" rows="6" readonly></textarea>
+</div>
+
+<div class="card">
+  <label>What would you like to know?</label>
+  <textarea [(ngModel)]="question" rows="3" placeholder="Ask something about the page..."></textarea>
+  <div class="row">
+    <div>Select Model:</div>
+<select [(ngModel)]="model">
+  <option *ngFor="let m of availableModels" [value]="m">
+    {{ m }}
+  </option>
+</select>
+    <button (click)="onParse()" [disabled]="loading || !question">Parse Content</button>
+  </div>
+</div>
+
+<!-- Show the model’s answer from /api/parse -->
+<div class="card" *ngIf="answer">
+  <label>Answer</label>
+  <pre style="white-space: pre-wrap">{{ answer }}</pre>
+</div>
+
+<div *ngIf="loading">Working…</div>
