@@ -1,12 +1,13 @@
 package ollama
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"strings" 
+	"strings"
 	"time"
 )
 
@@ -18,15 +19,16 @@ type generateReq struct {
 	Stream bool   `json:"stream"`
 }
 
-type generateResp struct {
+type ndjsonResp struct {
 	Response string `json:"response"`
 	Done     bool   `json:"done"`
 }
-func Generate(model, prompt string) (string, error) {
+
+func Generate(model, prompt string) (response string, err error) {
 	body, _ := json.Marshal(generateReq{
 		Model:  model,
 		Prompt: prompt,
-		Stream: false,
+		Stream: true,
 	})
 
 	req, err := http.NewRequest(http.MethodPost, defaultBase+"/api/generate", bytes.NewReader(body))
@@ -35,7 +37,7 @@ func Generate(model, prompt string) (string, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 120 * time.Second}
+	client := &http.Client{Timeout: 2 * time.Minute}
 	res, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -49,27 +51,24 @@ func Generate(model, prompt string) (string, error) {
 
 	// Decode Ollama's returned JSON objects line by line and concatenate "response" fields.
 	var full strings.Builder
-	dec := json.NewDecoder(res.Body)
-	for {
-		var msg map[string]any
-		if err := dec.Decode(&msg); err != nil {
-			if err == io.EOF {
-				break
-			}
-			return "", err
-		}
-		if s, ok := msg["response"].(string); ok {
-			full.WriteString(s)
-		} else if s, ok := msg["output"].(string); ok {
-			full.WriteString(s)
-		} else if s, ok := msg["message"].(string); ok {
-			full.WriteString(s)
+
+	// Use a scanner to allow for response streaming
+	scanner := bufio.NewScanner(res.Body)
+
+	// runs perpetually until EOF is received
+	for scanner.Scan() {
+		var piece ndjsonResp
+		err = json.Unmarshal(scanner.Bytes(), &piece)
+		if err == nil {
+			full.WriteString(piece.Response)
 		}
 	}
+	response = full.String()
 
-	text := strings.TrimSpace(full.String())
-	if text == "" {
+	if response == "" {
 		return "", errors.New("ollama returned empty response")
 	}
-	return text, nil
+
+	return response, nil
+
 }
