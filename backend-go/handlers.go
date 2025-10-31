@@ -4,13 +4,15 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/Brian-Soh/LLM-Webscraper-Assistant/backend-go/ollama"
 	"github.com/Brian-Soh/LLM-Webscraper-Assistant/backend-go/scraper"
 )
+
+var promptTemplate string = "You are a helpful assistant. Answer the user's question using ONLY this chunk of page text.\n"+
+			"If the chunk lacks the answer, say so briefly.\n\nQUESTION:\n%s\n\nCHUNK:\n%s"
 
 // --- SCRAPE HANDLER ---
 
@@ -29,7 +31,7 @@ type ScrapeResponse struct {
 func handleScrape(c *gin.Context) {
 	var req ScrapeRequest
 	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.URL) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Provide a valid 'url' in JSON body."})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Provide a valid 'url'"})
 		return
 	}
 
@@ -59,7 +61,7 @@ type ParseRequest struct {
 	DOMContent    string `json:"domContent,omitempty"`
 	Question      string `json:"question"`
 	Model         string `json:"model,omitempty"`
-	MaxChunkChars int    `json:"maxChunkChars,omitempty"` // default 100000
+	MaxChunkChars int    `json:"maxChunkChars,omitempty"`
 }
 
 type ParseResponse struct {
@@ -76,73 +78,52 @@ func handleParse(c *gin.Context) {
 		return
 	}
 
-	// Step 1: Retrieve and clean the page content
+	// Retrieve and clean the page content
 	content := strings.TrimSpace(req.DOMContent)
 	if content == "" && strings.TrimSpace(req.URL) != "" {
 		_, _, cleaned, err := scraper.ScrapeAndClean(req.URL)
 		if err != nil {
-			c.JSON(http.StatusBadGateway, ParseResponse{ErrorMessage: "Scrape failed: " + err.Error()})
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Scrape failed: " + err.Error()})
 			return
 		}
 		content = cleaned
 	}
 
 	if content == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No DOM content to parse. Provide 'domContent' or 'url'."})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No DOM content to parse. Provide omContent' or 'url'."})
 		return
 	}
 
-	// Step 2: Chunk the content
+	// Chunk the content
 	if req.MaxChunkChars <= 0 {
 		req.MaxChunkChars = 100000
 	}
 	chunks := chunkString(content, req.MaxChunkChars)
+
 	model := strings.TrimSpace(req.Model)
 	if model == "" {
 		model = "gemma2:2b"
 	}
 
 	fmt.Println(">>> /api/parse started. Chunks:", len(chunks), "Model:", model)
-
-	promptTmpl := "Extract information from the following content:\n\n%s\n\nQuestion: %s"
+	
 	var builder strings.Builder
-
-	// Step 3: Send each chunk to Ollama
-	for i, chunk := range chunks {
-		fmt.Println(">>> Sending chunk", i+1, "of", len(chunks), "len:", len(chunk))
-
-		done := make(chan struct{})
-		var resp string
-		var err error
-
-		go func() {
-			resp, err = ollama.Generate(model, fmt.Sprintf(promptTmpl, chunk, req.Question))
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			if err != nil {
-				c.JSON(http.StatusBadGateway, ParseResponse{
-					Model:        model,
-					Chunks:       len(chunks),
-					ErrorMessage: err.Error(),
-				})
-				return
-			}
-			builder.WriteString(resp)
-			if i < len(chunks)-1 {
-				builder.WriteString("\n")
-			}
-			fmt.Println(">>> Received chunk", i+1)
-		case <-time.After(60 * time.Second):
-			c.JSON(http.StatusGatewayTimeout, ParseResponse{
-				Model:        model,
-				Chunks:       len(chunks),
-				ErrorMessage: "Ollama request timed out",
-			})
+	// Send each chunk to Ollama
+		for i, chunk := range chunks {
+		prompt := fmt.Sprintf(
+			promptTemplate,
+			req.Question,
+			chunk,
+		)
+		part, err := ollama.Generate(model, prompt)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "ollama: " + err.Error(), "chunksProcessed": i})
 			return
 		}
+		if i > 0 {
+			builder.WriteString("\n")
+		}
+		builder.WriteString(part)
 	}
 
 	c.JSON(http.StatusOK, ParseResponse{
