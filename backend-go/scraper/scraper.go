@@ -25,7 +25,7 @@ func ScrapeAndClean(url string) (rawHTML string, bodyHTML string, cleaned string
 	tasks := chromedp.Tasks{
 		chromedp.Navigate(url),
 		// wait for network to be quiet-ish
-		chromedp.Sleep(2 * time.Second),
+		chromedp.WaitReady("body", chromedp.ByQuery),
 		chromedp.OuterHTML("html", &html, chromedp.ByQuery),
 	}
 
