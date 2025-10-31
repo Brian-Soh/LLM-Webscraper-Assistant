@@ -1,7 +1,6 @@
 package scraper
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -49,37 +48,10 @@ func ScrapeAndClean(url string) (rawHTML string, bodyHTML string, cleaned string
 	// Remove scripts and styles
 	tmp.Find("script, style, noscript").Remove()
 
-	// Extract text with line breaks
-	var buf bytes.Buffer
-	tmp.Find("p, h1, h2, h3, h4, h5, h6, li, a, td, th, div, span").Each(func(i int, s *goquery.Selection) {
-		text := strings.TrimSpace(s.Text())
-		if text != "" {
-			buf.WriteString(text)
-			buf.WriteString("\n")
-		}
-	})
-	clean := normalizeWhitespace(buf.String())
+	bodyHTML, _ = tmp.Html()
 
-	// Get the cleaned body HTML (no scripts/styles)
-	bodySel.Find("script, style, noscript").Remove()
-	bodyHTML, _ = bodySel.Html()
+	clean := strings.TrimSpace(tmp.Text())
+	clean = strings.Join(strings.Fields(clean), " ")
 
 	return html, bodyHTML, clean, nil
-}
-
-func normalizeWhitespace(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	s = strings.ReplaceAll(s, "\r", "\n")
-	lines := strings.Split(s, "\n")
-	out := make([]string, 0, len(lines))
-	for _, ln := range lines {
-		ln = strings.TrimSpace(ln)
-		if ln == "" {
-			continue
-		}
-		// Collapse inner spaces
-		ln = strings.Join(strings.Fields(ln), " ")
-		out = append(out, ln)
-	}
-	return strings.Join(out, "\n")
 }
